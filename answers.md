@@ -1,81 +1,92 @@
-## Section 1: Collecting Metrics
+## Collecting Metrics
+ * Adding Tags
+    * To add tags to your host we must access the Agent Configuration file. This file is titled datadog.yaml within the datadog-agent folder. For this example, we will be adding tags to our host. These tags will be added to line 66 of the datadog.yaml file. In the example shown below, you can see that I have assigned generic tags to my host titled "key_1_:_value_1, key_2_:_value_2, key_3_:_value_3" to ensure that the host tags are displaying correctly. There are a few rules to defining tags:
+        * Tags must start with a letter.
+        * Tags can be up to 200 characters long & also support Unicode.
+        * Tags are converted to lowercase. With this in mind it is advised to not use camel case for naming your tags.
+        * Tags can be formatted as "key:value" as shown in the example, or they can be "value".
+        * Tags should not be originiated from unbound sources such as User ID's.
 
-After looking over the challenges given to me to introduce me to Datadog's product, my first thought was, "Wow. I might be in over my head here". I have had limited experience with monitoring software in my career, and when first looking at everything that Datadog can do, it certainly felt overwhelming. However, no great things come easy so I got to work. After downloading the Agent to my machine, I almost immediately started to see metrics being reported. Aside from downloading the Agent, my first defined task was adding tags to the agent config file and show that they successfully carried over to Host Map page in Datadog. This task seemed pretty straightforward, and after finding the config file and adding the tag, it appeared in the Host Map page.
-![Tag in Agent Config](tag_within_agent_config_file.png?raw=true "Tag in Agent Config")
-![Tag on Host Map](tag_on_host_map.png?raw=true "Tag On Host Map")
-As a side note, you can see that the tag on the host map reads a bit differently than the actual tag in the Agent config file. I assume that this is the way to handle apostrophes in a string.
+    **Usage and why this is important**
+    * Let's say we want to look at our containers or cloud environments at the service level. It would be a lot more beneficial and time concious to be able to see our CPU usage across multilple hosts than having to invesitgate these values on individual servers. This is where tags come into play. By setting these up we can more easily aggregate metrics of a service across multiple servers. 
 
-My second task was to install a Datadog integration on a database on my machine. Luckily, I already had PostgreSQL on my machine and have used it extensively for projects and assignments from my time at Launch Academy. After creating a Datadog User with read-only access via the command line (`create user datadog with password '<PASSWORD>';
-grant pg_monitor to datadog;`), I again was given confirmation of this step nearly immediately within the Datadog interface in my list of instances as well as on the integrations page.
-![List of Instances](List_of_instances.png?raw=true "List of Instances")
-![PostgreSQL Installed](postgres_installed.png?raw=true "PostgreSQL Installed")
+    * Database Integration
+        * Adding a database integration to your Datadog configuration is a very straight forward process thanks to the documentation provided on your Datadog UI. As a quick rundown, here is how a PostgreSQL is integrated:
+            * As the PostgreSQL check is already packaged with the Datadog Agent, our first step  will be to create a read-only datadog user that has access to our server. This can be achieved by opening a psql session on the PostgreSQL database and entering the following commands:
+            "create user datadog with password 'PASSWORD';
+            grant pg_monitor to datadog;
+            grant SELECT ON pg_stat_database to datadog;"
+            * From here we will need to make some modifictions to the postgres.d/conf.yaml file so that it points to our host/port. 
+    **Usage and why this is important**
+    * This one may be a bit obvious but in most scenarios we will want to see how many of our servers are currently up and running.
 
-Next up I was tasked with creating a custom Agent check that submits a metric named my_metric with a random value between 0 and 1000. This aspect took a little longer for me as I had a small syntax error in generating a random number for each check. But I figured it out! By using this code: `import random
-from random import randint
+    * Create a Custom Agent Check
+        * In the scenario where we want to collect metrics for unique systems or custom applications, we will want to create a custom agent check. In this example, I will be creating a custom metric called "my_metric" that will produce a random integer between 0 and 1000.
+            * We must create two files within the datadog-agent folder. One being the configuration file, and the other being the check file. **It is vitally important to note that these files must share the same name.  So in this example my check file is titled "my_metric.py" and my configuration file is named "my_metric.yaml".**
+            * The configuration file contains a sequence called "instances" that can remain blank for the time being.
+            * Within the check file is where we want our logiv for this check. As mentioned, "my_metric" is simply a random number between 0-1000. To accomplish this, I have modified the check itself which inherits from AgentCheck. 
+            "self.gauge( "my_metric", random.randint(0, 1000), tags=["TAG_KEY:TAG_VALUE"],)"
+            * As you can see, tags can be added to this check, but I have not modified them in my_metric for the time being
+            * To change the collection interval we will be modifying the configuration file mentioned above. The default interval is 15 seconds, but lets change this to 45 seconds. We will use "min_collection_interval" parameter within the "instances" sequence mentioned above. **Note: By setting min_collection_interval" to 45, this does not mean that the metric will be collected every 45 seconds, but rather that it can be collected as often as every 45 seconds**
+    **Usage and why this is important**
+    * Again, custom agent checks can be a crucial part of your operation if you are trying to collect metrics for custom applications. If you are trying to collect metrics for widely available applications, public services, etc., it is recommended to create a full Agent configuration. 
+
+    * Modify Collection Interval via Datadog UI
+        * Another way to adjust the collection interval of a custom Agent check is to change it within the UI. In the Dashboard view, click the gear icon of the custom metric, and then select the metric from the small pop-up window. From here you will see your metric in the "Metric Name" list. By clicking on the metric another panel pops out from the right side of the screen and shows a field titled "Interval". By clicking on the "Edit" button  just  below this, we are given access to manually change the collection interval.
+    **Usage and why this is important**
+    * Modifying the collection interval via the Datadog UI provides a potentially quicker and easier way to adjust your intervals as opposed to modifying the configuration file itself.
 
 
-try:
-    # first, try to import the base class from new versions of the Agent...
-    from datadog_checks.base import AgentCheck
-except ImportError:
-    # ...if the above failed, the check is running in Agent version < 6.6.0
-    from checks import AgentCheck
+## Visualizing Data
+* Up until this point it is assumed that you have been working directly withn the UI to create dashboards, however in  this section we will cover how to create a dashboard via the Datadog API. In this example we will be creating a dashboard that contains our custom metric (my_metric) scoped over the host, a metric from our database, and our custom metric with the rollup function applied to sum up all the points for the past hour into a bucket. 
 
-# content of the special variable __version__ will be shown in the Agent status page
-__version__ = "1.0.0"
-
-
-class MyMetricCheck(AgentCheck):
-    def check(self, instance):
-        self.gauge(
-            "my_metric",
-            random.randint(0, 1000),
-            tags=["TAG_KEY:TAG_VALUE"],)`
-I was able to create my_metric. This is a very bare bones usage of it, but it does indeed work according to the timeseries graph I created on the Dashboard page.
-![my_metric Timeseries](my_metric_timeseries.png?raw=true "my_metric Timeseries")
-Next I had to change the interval of my check's collection interval to once every 45 seconds. I did this by going into the accompanying yaml file for my_metric and setting "min_collection_interval" to 45. It is my understanding that the "min_collection_interval" doesn't necessarily guarantee a solid interval every X amount of seconds, but rather the minimum amount of time a collection is made depending on the amount of other integrations enabled on the Agent.
-
-Bonus question time! It appears that another way to change the collection interval without modifying the Python check file is to do it directly within your Dashboard. When you click on the widget settings button, you can edit the interval time.
-![Change Interval](change_interval.png?raw=true "Change Interval")
-
-## Section 2: Visualizing Data
-
-This section definitely proved to be a bit more difficult for me. After reviewing the docs and trying a few things out I was finally able to create a dashboard via the Datadog API. However, I was not able to create two widgets simultaneously with one API call. I know that there is something wrong with the layout of my file, but I just can't seem to get it quite right (I'm hoping to get some clarity on this down the road). This is the script that I used:
-`from datadog import initialize, api
+```from datadog import initialize, api
 
 options = {
-    'api_key': 'XXXXXXX',
-    'app_key': 'XXXXXXX'
+    'api_key': 'APIKEY',
+    'app_key': 'APPKEY'
 }
 
 initialize(**options)
 
-title = 'API Test Dashboard 2'
+title = 'zAPI Test'
 widgets = [{
     'definition': {
         'type': 'timeseries',
         'requests': [
-            {'q': 'avg:my_metric{*}.rollup(sum, 3600)'}
+            {'q': 'my_metric{*}'}
         ],
-        'title': 'My Custom Metric'
+        'title': 'My Metric'
+    }
+},
+{
+    'definition': {
+        'type': 'timeseries',
+        'requests': [
+            {'q': 'postgresql.db.count{*}'}
+        ],
+        'title': 'Postgres DB Count'
+    }
+},
+{
+    'definition': {
+        'type': 'timeseries',
+        'requests': [
+            {'q': 'my_metric{*}.rollup(sum, 3600)'}
+        ],
+        'title': 'My Metric Rollup'
     }
 }]
-
-
 layout_type = 'ordered'
-description = 'A dashboard to test the API.'
+description = 'A dashboard my metric.'
 is_read_only = True
 notify_list = ['user@domain.com']
 template_variables = [{
-    'name': 'MacBook-Air',
+    'name': 'host1',
     'prefix': 'host',
-    'default': 'MacBook-Air'
+    'default': 'my-host'
 }]
 
-saved_view = [{
-    'name': 'Saved views for hostname 2',
-    'template_variables': [{'name': 'host', 'value': 'MacBook-Air'}]}
-]
 
 api.Dashboard.create(title=title,
                      widgets=widgets,
@@ -84,40 +95,32 @@ api.Dashboard.create(title=title,
                      is_read_only=is_read_only,
                      notify_list=notify_list,
                      template_variables=template_variables,
-                     template_variable_presets=saved_view)
-`
-You will notice in the above script that I implemented the rollup feature. This function takes two arguments, the method (sum, min, max, count, avg), and the time (in seconds). So per the challenge, I setup my_metric to have the rollup feature with a sum method set to 1 hour (3600 seconds) interval between the data points.
-It also appears in the documentation that setting custom time frames is still in beta. Maybe this is why I couldn't properly get the last 5 minutes to show.
-![Custom Timeframes](custom_timeframes.png?raw=true "Custom Timeframes")
-I was able to send a snapshot of myself though, with the graph set at "The Past 15 minutes".
-![Snapshot](snapshot.png?raw=true "Snapshot")
+)
+```
+* After entering your proper API & APP key, you can start to define the widgets that you want to create. You will see that within the definition of each widget, you have some customizable parameters, the first being 'type'. For this excercise, we will be building a timeboard for each widget. Next we will be modifying the request itself. The "{'q'}" found before the metric name is in reference to the query definition. Imeediately following the query definiton is where we will define what metric the widget is made for. On line 57 you will see that this widget is going to be monitoring my_metric over all (*) instances within the infrastructure. 
+    *  To effectively apply the rollup function to a widget you can append ".rollup(method, time)". The methods available for the rollup function are sum, min, max, count, and avg. You can see above that I have used the average method. The time field is measured in seconds, so in the above example I have set my rollup function to 1 hour intervals.
+**Usage and why this is important**
+* The abiltity to leverage the Datadog API for creating dashbaords is an incredibly powerful aspect of the Datadog infrastructure. By creating these scripts to create, view, and delete dahsboards could save you a ton of time as opposed to manually creating them via the Datadog UI.
 
-## Section 3: Monitoring Data
+## Monitoring Data
+* Datadog provides multiple integrations for recieving alerts of metrics that hit thresholds that indicate issues with your environment such as Slack, Jira, and PagerDuty. These alerts can also be setup via the Datadog UI with these steps:
+    * From the dashboard view, click the cog wheel at the top right of the metric's panel, and then click "Create monitor"
+    * For this example we will be creating an Alert threshold that alerts when the average of the  metric exceeds 800 over a 5 minute period, a Warning threshold that alerts whenthe metric exceeds 500 over a 5 minute period, as well as an alert that triggers if there is no data over the past 10 minutes.
+        *  To accomplish the first two tasks, simply enter the values of the thresholds in the appropriate fields.
+        * To set a "Data Missing" alert, you will first need to select "Notify" from the dropdown. After this has been selected, you can determine how many minutes must pass for the alert to trigger.
+    * We will want our messages to be verbose on exactly what is happening with our metric, and why we are getting an alert. This can be setup in Step 4 of the New Moonitor screen. Datadog provides multiple variables to use in these messages that can give us a clear picture of what is happening. For example, I have set my Alert message as: {{#is_alert}}My Metric is above 800 on IP {{host.ip}} with {{value}} {{/is_alert}}
+    In this example, the text within {{#is_alert}} will be displayed when the alert message is triggered. {{host.ip}} tells us the IP  address of the host that is experiencing the issue, and {{value}} tells us exactly the value that triggered the alert.
+    * Finally, we want to ensure that the proper employees are receiving this message so that it can be remedied in a timely manner. In step 5 we can dictate who recieves this particular alert from the dropdown. 
+    ### Silencing Alerts
+    * There are likely a multitude of reasons that you would want to silence an alarm, such as weekend hours for certain employees, or planned maintenance on your system. To achieve this select "Monitors" on the left side of the UI, and then "Manage Monitors". On this screen we can see the monitor that we have created, and after selecting it we are given an option at the top for "Manage Downtime". On the right we can see an icon that reads "Schedule Downtime". After selecting this we can decide what days and time that we want to silence our alert. For this exercise we have silenced the alert from Monday to Friday, from 7PM to 9AM, as well as all day on Saturday and Sunday. It may also be important for your organization to alert members that a downtime has been set. This capability can be found in step 4, "Notify your team". 
+**Usage and why this important**
+* It is imperitive that your teams receive notifications when something goes awry with your system. If not for alerts/notifications, it could take quite some time to realize something is wrong, thus costing you clients and/or money.
 
-Let me just say that I thoroughly enjoyed this section of the challenge, as I really like working with the Datadog interface. I found that setting up the Metric Monitor was really straight forward. Here is how I set it up:
-![Metric Monitor setup](alert_setup.png?raw=true "Metric Monitor setup")
-![Metric Monitor text](alert_text.png?raw=true "Metric Monitor text")
-Resulting email (this screenshot is from a test however):
-![Email Monitor](email_monitor.png?raw=true "Email Monitor")
-I did have difficulty on getting the value that triggered the monitor to show up properly in the email alerts, and would love more insight on this. (You can see this indicated in the email by "0.0 caused this Alert")
+## Collecting APM Data
+* Collecting APM (Application Performance Monitoring) data is made easy by Datadog. After installing ddtrace you will then start adding the appropriate entry/end points into your application. Based upon the example given in the exercise, we can see that '/' route triggers the 'api_entry'. This is reflected within the UI when the page is hit by a user. Within the APM dashboard screen, we can see our status codes for GET requests when we hit that endpoint in oour browser. An important feature to note is the presence of timestamps for every trace picked up by Datadog within this interface.  This applies to the  other two routes determined in the Flask script as well. Note: If your port for Flask is different from the default set by Datadog (8126), this will need  to updated in the datadog.yaml file so that the agent is listening to the correct port. 
+* Another important aspect of APM with Datadog is that you have the ability to leverage your tags to keep traces that matter most in your application.
+**Usages and why this is important**
+* Collecting traces from your application is absolutely essential for understanding runtime metrics and performance of your web application. Knowing what aspects of your applications may be throwing 500 errors or showing latency is vitally important to maintaining a healthy system and providing a satisfactory experience for your customers.  
 
-This obviously resulted in my email inbox being bombarded so the second part of this challenge was a welcome one. I was tasked with creating downtimes for this monitor that silences it daily M-F from 7pm-9am, as well as all day on Saturday and Sunday. I also had to make sure an email was sent once I confirmed these down times.
-![Silence Alert](silence_alert.png?raw=true "Silence Alert")
-Resulting email notification:
-![Email Silence](email_of_silence.png?raw=true "Email Silence")
-(At first I thought I botched the times, admittedly. But after checking the UTC times, it was indeed correct)
-
-## Section 4: Collecting APM Data:
-
-This section took me the most time, hands down. It wasn't necessarily my understanding of the content, but rather a ton of issues with my machine and how I had everything setup. Initially I tried to solve this challenge with an older project that I built on Rails, but a fairly prevalent OpenSSL issue shut that down pretty quick. My next plan of action was to completely upgrade Ruby on my machine and see if that remedied the issue...it didn't. My next plan of attack was creating a brand new, very simple Sinatra app but I couldn't get it quite right. So it was then time for plan C. I have never built or used a Flask app in my life, but there is no better time to learn! After following the documentation I was pretty sure I was ready to fire it up and get to work. I was slightly off on that assumption. I found that the defined port number in the script that was provided to me (5050) was already in use by my Dropbox application. After changing the port number to 8910 in the script, and running "ddtrace-run python hello.py", I was up and running! It certainly is not a complex application by any standards, but at this point in time I preferred to keep it as simple as possible to understand what was happening in the script in terms of api entry points, apm endpoints, and trace endpoints. The dashboard can be found [here](https://app.datadoghq.com/apm/trace/8257436633630229529?spanID=5860849188908287769&env=none&sort=time&colorBy=service&graphType=flamegraph&shouldShowLegend=false)
-
-![APM Dashboard](APM_screenshot.png?raw=true "APM Screenshot")
-
-**Bonus**
-It is my understanding from the documentation that Resources are what makes up Services. An example of this would be a website that has a merchandise section of their website. They may have group of endpoints such as their "add item", "payment", and "checkout" as their "store" Service. The individual endpoints within those mentioned above would make up the Resources for that Service.
-
-## Final question
-While researching Datadog in the weeks leading up to me applying, and during this exercise, I have had a lot of "a ha!" moments in terms of what is possible with this software. When I saw this question I honestly got pretty excited to share an idea with you all on how I think this software can be leveraged in today's world. As we all know, the standard workday isn't quite the same as it was a few months ago, before the COVID-19 pandemic. Pretty much every tech company in the United States (and some non-tech) went virtual/work from home to keep their employees safe. Now, as it stands today, more and more states are re-opening and allowing employees to go back to the office to work. However, there have also been some very large companies who are now considering staying remote for either the rest of the year, or for the foreseeable future. I think Datadog could be used in extremely beneficial ways to companies who are weighing their options of either going back to physical offices, or staying virtual/remote forever. They would be able to see how employees perform in both scenarios; how many bugs are created whether employees are at home or in the office. The ability to track tickets from clients and how fast fixes are pushed out to remedy them. Not to mention the ability to see how clients interact with your site while they are likely stuck at home. How would those interactions translate to a more "normal" world when restrictions are lifted and people leave their houses (and computers) more often?
-
-## Wrap-up
-I would just like to say how great this challenge was overall. It has been quite some time since I've been challenged to understand a technology all on my own, but it really is the best way to learn it. I truly appreciate all of your time and I look forward to hearing from you soon. If there are any glaring changes that need to be made to this, please let me know and I would be happy to make them!
+## Creative Uses for Datadog
+* I personally think that a creative use for Datadog would be to monitor the activity of certain stock/crypto currencies in terms of searches or discussions. I firmly believe we are in a very interesting time of investing where retail investors have more access than ever to research and buy/sell stocks or currencies. We saw a huge surge in retail investing recently with the rise of the Gamestop madness fueled by WallStreetBets on Reddit, and I beleieve this is only the beginning of a new era of retail investing. With this in mind, Datadog could provide a wealth of crucial information to those same investors. 
